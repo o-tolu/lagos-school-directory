@@ -1,0 +1,29 @@
+{
+    "name": "Assignment",
+    "type": "object",
+    "properties": {
+        "school_record_id": {
+            "type": "string"
+        },
+        "salesperson_id": {
+            "type": "string"
+        },
+        "interest_level": {
+            "type": "string",
+            "enum": [
+                "not_contacted",
+                "reached_out",
+                "no_response",
+                "interested",
+                "follow_up",
+                "committed",
+                "not_interested"
+            ],
+            "default": "not_contacted"
+        }
+    },
+    "required": [
+        "school_record_id",
+        "salesperson_id"
+    ]
+}

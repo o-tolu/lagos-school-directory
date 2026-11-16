@@ -1,0 +1,78 @@
+{
+    "name": "School",
+    "type": "object",
+    "properties": {
+        "school_id": {
+            "type": "string"
+        },
+        "school_name": {
+            "type": "string"
+        },
+        "lga": {
+            "type": "string"
+        },
+        "school_type": {
+            "type": "string"
+        },
+        "ownership": {
+            "type": "string"
+        },
+        "address": {
+            "type": "string"
+        },
+        "phone_number": {
+            "type": "string"
+        },
+        "email": {
+            "type": "string"
+        },
+        "website": {
+            "type": "string"
+        },
+        "head_teacher": {
+            "type": "string"
+        },
+        "boys_population": {
+            "type": "number"
+        },
+        "girls_population": {
+            "type": "number"
+        },
+        "total_population": {
+            "type": "number"
+        },
+        "profile_url": {
+            "type": "string"
+        },
+        "group_id": {
+            "type": "string"
+        },
+        "group_type": {
+            "type": "string"
+        },
+        "recommended_action": {
+            "type": "string"
+        },
+        "linked_school_ids": {
+            "type": "string"
+        },
+        "is_manual": {
+            "type": "boolean",
+            "default": false
+        },
+        "phone_overrides": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "default": []
+        },
+        "email_override": {
+            "type": "string",
+            "default": null
+        }
+    },
+    "required": [
+        "school_name"
+    ]
+}

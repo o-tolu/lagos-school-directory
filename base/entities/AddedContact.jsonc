@@ -1,0 +1,24 @@
+{
+    "name": "AddedContact",
+    "type": "object",
+    "properties": {
+        "school_record_id": {
+            "type": "string"
+        },
+        "contact_type": {
+            "type": "string",
+            "enum": [
+                "phone",
+                "email"
+            ]
+        },
+        "value": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "school_record_id",
+        "contact_type",
+        "value"
+    ]
+}
