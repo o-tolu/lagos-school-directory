@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/client';
 import { useCrm } from '@/lib/CrmContext';
 import { useToast } from '@/components/Toast';
 import { computeHiddenSchools, buildSchoolIdMap } from '@/lib/schoolUtils';
@@ -96,7 +96,7 @@ export default function AssignModal({ onClose }) {
         const chunkSize = 100;
         for (let i = 0; i < records.length; i += chunkSize) {
             const chunk = records.slice(i, i + chunkSize);
-            await base44.entities.Assignment.bulkCreate(chunk);
+            await api.entities.Assignment.bulkCreate(chunk);
             setProgress({ done: Math.min(i + chunkSize, records.length), total: records.length });
         }
 

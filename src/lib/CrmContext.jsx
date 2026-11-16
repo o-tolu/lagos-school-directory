@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { base44 } from '@/api/base44Client';
+import { api } from '@/api/client';
 import { processSchool } from '@/lib/schoolUtils';
 
 const CrmContext = createContext(null);
@@ -10,7 +10,10 @@ export function CrmProvider({ children }) {
     const [assignments, setAssignments] = useState([]);
     const [addedContacts, setAddedContacts] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [online, setOnline] = useState(navigator.onLine);
+    const [networkOnline, setOnline] = useState(navigator.onLine);
+    const [serverUp, setServerUp] = useState(true);
+    // 'online' drives the connection dot and offline banner: browser has network AND the live connection to the server is up
+    const online = networkOnline && serverUp;
 
     // Use a ref for assignments so async operations can read the latest without stale closures
     const assignmentsRef = useRef([]);
@@ -19,7 +22,7 @@ export function CrmProvider({ children }) {
     // ---- Load Schools (one-time, large dataset) ----
     const loadSchools = useCallback(async () => {
         try {
-            const rawSchools = await base44.entities.School.list(null, 6000);
+            const rawSchools = await api.entities.School.list(null, 6000);
             const processed = rawSchools.map(processSchool);
             // Sort by numeric school_id ascending (Excel file order); manual schools (no school_id) at end
             processed.sort((a, b) => {
@@ -40,7 +43,7 @@ export function CrmProvider({ children }) {
     // ---- Load Salespersons ----
     const loadSalespersons = useCallback(async () => {
         try {
-            return await base44.entities.Salesperson.list('-created_date', 200);
+            return await api.entities.Salesperson.list('-created_date', 200);
         } catch (err) {
             console.error('Failed to load salespersons:', err);
             return [];
@@ -50,7 +53,7 @@ export function CrmProvider({ children }) {
     // ---- Load Assignments ----
     const loadAssignments = useCallback(async () => {
         try {
-            return await base44.entities.Assignment.list('-created_date', 6000);
+            return await api.entities.Assignment.list('-created_date', 6000);
         } catch (err) {
             console.error('Failed to load assignments:', err);
             return [];
@@ -60,7 +63,7 @@ export function CrmProvider({ children }) {
     // ---- Load Added Contacts ----
     const loadAddedContacts = useCallback(async () => {
         try {
-            return await base44.entities.AddedContact.list('-created_date', 2000);
+            return await api.entities.AddedContact.list('-created_date', 2000);
         } catch (err) {
             console.error('Failed to load added contacts:', err);
             return [];
@@ -85,49 +88,28 @@ export function CrmProvider({ children }) {
         })();
     }, [loadSchools, loadSalespersons, loadAssignments, loadAddedContacts]);
 
-    // ---- Real-time subscriptions ----
+    // ---- Real-time subscriptions (server pushes every change to all open tabs/devices) ----
     useEffect(() => {
-        const unsubSP = base44.entities.Salesperson.subscribe((event) => {
-            setSalespersons(prev => {
-                if (event.type === 'create') return [...prev, event.data];
-                if (event.type === 'update') return prev.map(x => x.id === event.data.id ? event.data : x);
+        // 'reload' = too many rows changed (or the connection was re-established): refetch everything for that entity.
+        const sync = (setter, loader, mapRecord = (x) => x) => (event) => {
+            if (event.type === 'reload') { loader().then(setter); return; }
+            setter(prev => {
+                if (event.type === 'create') return prev.some(x => x.id === event.data.id) ? prev : [...prev, mapRecord(event.data)];
+                if (event.type === 'update') return prev.map(x => x.id === event.data.id ? mapRecord(event.data) : x);
                 if (event.type === 'delete') return prev.filter(x => x.id !== event.data.id);
                 return prev;
             });
-        });
+        };
 
-        const unsubA = base44.entities.Assignment.subscribe((event) => {
-            setAssignments(prev => {
-                if (event.type === 'create') return [...prev, event.data];
-                if (event.type === 'update') return prev.map(x => x.id === event.data.id ? event.data : x);
-                if (event.type === 'delete') return prev.filter(x => x.id !== event.data.id);
-                return prev;
-            });
-        });
-
-        const unsubAC = base44.entities.AddedContact.subscribe((event) => {
-            setAddedContacts(prev => {
-                if (event.type === 'create') return [...prev, event.data];
-                if (event.type === 'update') return prev.map(x => x.id === event.data.id ? event.data : x);
-                if (event.type === 'delete') return prev.filter(x => x.id !== event.data.id);
-                return prev;
-            });
-        });
-
-        const unsubSchool = base44.entities.School.subscribe((event) => {
-            setSchools(prev => {
-                if (event.type === 'create') {
-                    if (prev.some(s => s.id === event.data.id)) return prev;
-                    return [...prev, processSchool(event.data)];
-                }
-                if (event.type === 'update') return prev.map(x => x.id === event.data.id ? processSchool(event.data) : x);
-                if (event.type === 'delete') return prev.filter(x => x.id !== event.data.id);
-                return prev;
-            });
-        });
-
-        return () => { unsubSP(); unsubA(); unsubAC(); unsubSchool(); };
-    }, []);
+        const unsubs = [
+            api.entities.Salesperson.subscribe(sync(setSalespersons, loadSalespersons)),
+            api.entities.Assignment.subscribe(sync(setAssignments, loadAssignments)),
+            api.entities.AddedContact.subscribe(sync(setAddedContacts, loadAddedContacts)),
+            api.entities.School.subscribe(sync(setSchools, loadSchools, processSchool)),
+            api.onConnectionChange(setServerUp),
+        ];
+        return () => unsubs.forEach(u => u());
+    }, [loadSchools, loadSalespersons, loadAssignments, loadAddedContacts]);
 
     // ---- Online/Offline detection ----
     useEffect(() => {
@@ -140,14 +122,14 @@ export function CrmProvider({ children }) {
 
     // ---- Salesperson CRUD ----
     const createSalesperson = useCallback(async (data) => {
-        return await base44.entities.Salesperson.create(data);
+        return await api.entities.Salesperson.create(data);
     }, []);
 
     const deleteSalesperson = useCallback(async (id) => {
         // 1. Delete all assignments for this salesperson
-        await base44.entities.Assignment.deleteMany({ salesperson_id: id });
+        await api.entities.Assignment.deleteMany({ salesperson_id: id });
         // 2. Delete the salesperson
-        await base44.entities.Salesperson.delete(id);
+        await api.entities.Salesperson.delete(id);
         // 3. Re-fetch assignments
         const fresh = await loadAssignments();
         setAssignments(fresh);
@@ -159,7 +141,7 @@ export function CrmProvider({ children }) {
         const chunkSize = 100;
         for (let i = 0; i < records.length; i += chunkSize) {
             const chunk = records.slice(i, i + chunkSize);
-            await base44.entities.Assignment.bulkCreate(chunk);
+            await api.entities.Assignment.bulkCreate(chunk);
         }
         // Re-fetch after all chunks complete
         const fresh = await loadAssignments();
@@ -167,12 +149,12 @@ export function CrmProvider({ children }) {
     }, [loadAssignments]);
 
     const updateAssignment = useCallback(async (id, data) => {
-        await base44.entities.Assignment.update(id, data);
+        await api.entities.Assignment.update(id, data);
         // Real-time subscription will update state
     }, []);
 
     const deleteAllAssignments = useCallback(async () => {
-        await base44.entities.Assignment.deleteMany({});
+        await api.entities.Assignment.deleteMany({});
         // Immediately set in-memory cache to empty
         setAssignments([]);
     }, []);
@@ -184,14 +166,14 @@ export function CrmProvider({ children }) {
 
     // ---- School CRUD (manual schools) ----
     const createSchool = useCallback(async (data) => {
-        const record = await base44.entities.School.create(data);
+        const record = await api.entities.School.create(data);
         const processed = processSchool(record);
         setSchools(prev => prev.some(s => s.id === processed.id) ? prev : [...prev, processed]);
         return processed;
     }, []);
 
     const updateSchool = useCallback(async (id, data) => {
-        const record = await base44.entities.School.update(id, data);
+        const record = await api.entities.School.update(id, data);
         const processed = processSchool(record);
         setSchools(prev => prev.map(s => s.id === id ? processed : s));
         return processed;
@@ -199,11 +181,11 @@ export function CrmProvider({ children }) {
 
     const deleteSchool = useCallback(async (id) => {
         // Delete assignments for this school
-        await base44.entities.Assignment.deleteMany({ school_record_id: id });
+        await api.entities.Assignment.deleteMany({ school_record_id: id });
         // Delete added contacts for this school
-        await base44.entities.AddedContact.deleteMany({ school_record_id: id });
+        await api.entities.AddedContact.deleteMany({ school_record_id: id });
         // Delete the school
-        await base44.entities.School.delete(id);
+        await api.entities.School.delete(id);
         // Update local state
         setSchools(prev => prev.filter(s => s.id !== id));
         const fresh = await loadAssignments();
@@ -212,11 +194,11 @@ export function CrmProvider({ children }) {
 
     // ---- AddedContact CRUD ----
     const createAddedContact = useCallback(async (data) => {
-        return await base44.entities.AddedContact.create(data);
+        return await api.entities.AddedContact.create(data);
     }, []);
 
     const deleteAddedContact = useCallback(async (id) => {
-        await base44.entities.AddedContact.delete(id);
+        await api.entities.AddedContact.delete(id);
     }, []);
 
     // ---- Helper: get assignment for a school ----
